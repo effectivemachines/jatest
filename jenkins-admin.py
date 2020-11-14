@@ -23,42 +23,31 @@
 from argparse import ArgumentParser
 from tempfile import NamedTemporaryFile
 from xml.etree import ElementTree
-import base64
-import http.client
 import os
 import re
+import requests
 import sys
-import urllib.request
-import urllib.error
-import urllib.parse
 
 
 def http_get(resource, ignore_error=False, username=None, password=None):
     """ get the contents of a URL """
-    request = urllib.request.Request(resource)
-    if username and password:
-        base64string = base64.b64encode('%s:%s' % (username, password))
-        request.add_header("Authorization", "Basic %s" % base64string)
+
     try:
-        response = urllib.request.urlopen(request)
-    except urllib.error.HTTPError as http_err:
-        code = http_err.code
-        print('%s returns HTTP error %d: %s' \
-              % (resource, code, http_err.reason))
+        if username and password:
+            if username and password:
+                response = requests.get(resource, auth=(username,password))
+            else:
+                response = requests.get(resource)
+        response.raise_for_status()
+    except requests.exceptions as http_err: # pylint:
+        errstr=str(http_err)
+        print(f'%{resource} returns HTTP error %{response.status_code}: %{errstr}\n')
         if ignore_error:
             return ''
         print('Aborting.')
         sys.exit(1)
-    except urllib.error.URLError as url_err:
-        print('Error contacting %s: %s' % (resource, url_err.reason))
-        if ignore_error:
-            return ''
-        raise url_err
-    except http.client.BadStatusLine as err:
-        if ignore_error:
-            return ''
-        raise err
-    return response.read()
+        raise http_err
+    return response.text
 
 
 def parse_jira_data(filename):
@@ -230,7 +219,7 @@ def main():  #pylint: disable=too-many-branches, too-many-statements, too-many-l
         joblog.flush()
         rssdata = http_get(options.jiraFilter, False, options.jiraUser,
                            options.jiraPassword)
-        tempfile.write(rssdata)
+        tempfile.write(rssdata.encode('utf-8'))
         tempfile.flush()
         for (key, attachment) in list(parse_jira_data(tempfile.name).items()):
             (project, issue) = key
